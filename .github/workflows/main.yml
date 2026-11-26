@@ -45,10 +45,11 @@ jobs:
           cp "$ENGINE_PY" build_android/core/lan_engine.py
           touch build_android/core/__init__.py
 
-          # Фиксируем стабильную ветку python-for-android и NDK 25b для Kivy 2.3.0
+          # Фиксируем Python 3.11.5 и NDK 25b для стабильной сборки Kivy 2.3.0
+          sed -i 's/^requirements = .*/requirements = python3==3.11.5,kivy==2.3.0,pyjnius/' build_android/buildozer.spec
           sed -i '/^p4a\.branch/d' build_android/buildozer.spec
           sed -i '/^android\.ndk/d' build_android/buildozer.spec
-          sed -i '/^\[app\]/a p4a.branch = 2024.01.21\nandroid.ndk = 25b' build_android/buildozer.spec
+          sed -i '/^\[app\]/a android.ndk = 25b' build_android/buildozer.spec
 
       - name: Build APK with Buildozer
         run: |
