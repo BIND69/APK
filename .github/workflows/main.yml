@@ -74,17 +74,24 @@ jobs:
           CC: gcc-12
           CXX: g++-12
         run: |
+          set -o pipefail
           pip install --upgrade pip
-          pip install "setuptools<70.0" wheel "cython<3.0" buildozer
+          pip install "setuptools<70.0" wheel "cython<3.0" buildozer appdirs colorama jinja2 "sh<2.0" build toml packaging
           cd build_android
           buildozer -v android debug 2>&1 | tee build.log || {
-            echo "=== ПОСЛЕДНИЕ 80 СТРОК ЛОГА ОШИБКИ ==="
-            tail -n 80 build.log
+            echo "=== ПОСЛЕДНИЕ 100 СТРОК ЛОГА ОШИБКИ ==="
+            tail -n 100 build.log
             exit 1
           }
 
       - name: Sign APK with Author Keystore (CN=Tural)
         run: |
+          RAW_APK=$(find build_android -name "*.apk" | head -n 1)
+          if [ -z "$RAW_APK" ]; then
+            echo "ERROR: APK файл не найден после сборки!"
+            exit 1
+          fi
+
           keytool -genkeypair -v \
             -keystore world_release.keystore \
             -alias world_key \
@@ -94,7 +101,6 @@ jobs:
 
           APKSIGNER=$(find "$HOME/.buildozer" /usr -name "apksigner" 2>/dev/null | head -n 1)
           ZIPALIGN=$(find "$HOME/.buildozer" /usr -name "zipalign" 2>/dev/null | head -n 1)
-          RAW_APK=$(find build_android/bin -name "*.apk" | head -n 1)
 
           "$ZIPALIGN" -f -p 4 "$RAW_APK" aligned_world.apk
           "$APKSIGNER" sign --ks world_release.keystore --ks-pass pass:world2026 --key-pass pass:world2026 --out World.apk aligned_world.apk
