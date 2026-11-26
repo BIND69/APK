@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-android-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -32,31 +32,49 @@ jobs:
         run: |
           mkdir -p build_android/core
           MAIN_PY=$(find . -maxdepth 3 -name "main.py" ! -path "./build_android/*" | head -n 1)
-          SPEC_FILE=$(find . -maxdepth 3 -name "buildozer.spec" ! -path "./build_android/*" | head -n 1)
           ENGINE_PY=$(find . -maxdepth 3 -name "lan_engine.py" ! -path "./build_android/*" | head -n 1)
 
-          if [ -z "$MAIN_PY" ] || [ -z "$SPEC_FILE" ] || [ -z "$ENGINE_PY" ]; then
-            echo "ERROR: Не найдены main.py, buildozer.spec или lan_engine.py!"
+          if [ -z "$MAIN_PY" ] || [ -z "$ENGINE_PY" ]; then
+            echo "ERROR: Не найдены main.py или lan_engine.py в репозитории!"
+            ls -la
             exit 1
           fi
 
           cp "$MAIN_PY" build_android/main.py
-          cp "$SPEC_FILE" build_android/buildozer.spec
           cp "$ENGINE_PY" build_android/core/lan_engine.py
           touch build_android/core/__init__.py
 
-          # Фиксируем Python 3.11.5 и NDK 25b для стабильной сборки Kivy 2.3.0
-          sed -i 's/^requirements = .*/requirements = python3==3.11.5,kivy==2.3.0,pyjnius/' build_android/buildozer.spec
-          sed -i '/^p4a\.branch/d' build_android/buildozer.spec
-          sed -i '/^android\.ndk/d' build_android/buildozer.spec
-          sed -i '/^\[app\]/a android.ndk = 25b' build_android/buildozer.spec
+          cat << 'EOF' > build_android/buildozer.spec
+          [app]
+          title = World
+          package.name = worldlan
+          package.domain = org.tural.world
+          source.dir = .
+          source.include_exts = py,png,jpg,kv,atlas
+          version = 1.4.0
+          requirements = python3,kivy==2.3.0,pyjnius
+          orientation = portrait
+          fullscreen = 0
+          android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE,CHANGE_WIFI_MULTICAST_STATE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_IMAGES,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO
+          android.api = 33
+          android.minapi = 24
+          android.ndk = 25b
+          android.archs = arm64-v8a
+          android.accept_sdk_license = True
+          android.allow_backup = True
+          p4a.branch = v2024.01.21
+
+          [buildozer]
+          log_level = 2
+          warn_on_root = 0
+          EOF
 
       - name: Build APK with Buildozer
         run: |
           pip install --upgrade pip
           pip install "setuptools<70.0" wheel "cython<3.0" buildozer
           cd build_android
-          yes | buildozer android debug
+          buildozer -v android debug
 
       - name: Sign APK with Author Keystore (CN=Tural)
         run: |
