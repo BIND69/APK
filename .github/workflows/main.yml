@@ -1,0 +1,49 @@
+name: Build Signed World.apk (Android)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare Android Build Directory
+        run: |
+          mkdir -p build_android/core
+          cp android/main.py build_android/main.py
+          cp android/buildozer.spec build_android/buildozer.spec
+          touch build_android/core/__init__.py
+          cp core/lan_engine.py build_android/core/lan_engine.py
+
+      - name: Build APK with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          workdir: build_android
+          buildozer_version: stable
+
+      - name: Sign APK with Author Keystore (CN=Tural)
+        run: |
+          keytool -genkeypair -v \
+            -keystore world_release.keystore \
+            -alias world_key \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass world2026 -keypass world2026 \
+            -dname "CN=Tural, OU=Dev, O=Tural, L=Local, C=RU"
+
+          APKSIGNER=$(find / -name "apksigner" 2>/dev/null | head -n 1)
+          ZIPALIGN=$(find / -name "zipalign" 2>/dev/null | head -n 1)
+
+          RAW_APK="${{ steps.buildozer.outputs.filename }}"
+          $ZIPALIGN -f -p 4 "$RAW_APK" aligned_world.apk
+          $APKSIGNER sign --ks world_release.keystore --ks-pass pass:world2026 --key-pass pass:world2026 --out World.apk aligned_world.apk
+
+      - name: Upload Signed World.apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: World-Android-APK
+          path: World.apk
