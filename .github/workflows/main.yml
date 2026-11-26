@@ -11,20 +11,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            openjdk-17-jdk git zip unzip autoconf libtool pkg-config \
+            zlib1g-dev libncurses-dev libncursesw5-dev libtinfo6 \
+            cmake libffi-dev libssl-dev automake
+
       - name: Prepare Android Build Directory
         run: |
           mkdir -p build_android/core
-          cp android/main.py build_android/main.py
-          cp android/buildozer.spec build_android/buildozer.spec
+          MAIN_PY=$(find . -maxdepth 3 -name "main.py" ! -path "./build_android/*" | head -n 1)
+          SPEC_FILE=$(find . -maxdepth 3 -name "buildozer.spec" ! -path "./build_android/*" | head -n 1)
+          ENGINE_PY=$(find . -maxdepth 3 -name "lan_engine.py" ! -path "./build_android/*" | head -n 1)
+
+          if [ -z "$MAIN_PY" ] || [ -z "$SPEC_FILE" ] || [ -z "$ENGINE_PY" ]; then
+            echo "ERROR: Не найдены main.py, buildozer.spec или lan_engine.py в репозитории!"
+            ls -la
+            exit 1
+          fi
+
+          cp "$MAIN_PY" build_android/main.py
+          cp "$SPEC_FILE" build_android/buildozer.spec
+          cp "$ENGINE_PY" build_android/core/lan_engine.py
           touch build_android/core/__init__.py
-          cp core/lan_engine.py build_android/core/lan_engine.py
 
       - name: Build APK with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
-        with:
-          workdir: build_android
-          buildozer_version: stable
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install "cython<3.0" buildozer
+          cd build_android
+          yes | buildozer android debug
 
       - name: Sign APK with Author Keystore (CN=Tural)
         run: |
@@ -35,12 +57,12 @@ jobs:
             -storepass world2026 -keypass world2026 \
             -dname "CN=Tural, OU=Dev, O=Tural, L=Local, C=RU"
 
-          APKSIGNER=$(find / -name "apksigner" 2>/dev/null | head -n 1)
-          ZIPALIGN=$(find / -name "zipalign" 2>/dev/null | head -n 1)
+          APKSIGNER=$(find "$HOME/.buildozer" /usr -name "apksigner" 2>/dev/null | head -n 1)
+          ZIPALIGN=$(find "$HOME/.buildozer" /usr -name "zipalign" 2>/dev/null | head -n 1)
+          RAW_APK=$(find build_android/bin -name "*.apk" | head -n 1)
 
-          RAW_APK="${{ steps.buildozer.outputs.filename }}"
-          $ZIPALIGN -f -p 4 "$RAW_APK" aligned_world.apk
-          $APKSIGNER sign --ks world_release.keystore --ks-pass pass:world2026 --key-pass pass:world2026 --out World.apk aligned_world.apk
+          "$ZIPALIGN" -f -p 4 "$RAW_APK" aligned_world.apk
+          "$APKSIGNER" sign --ks world_release.keystore --ks-pass pass:world2026 --key-pass pass:world2026 --out World.apk aligned_world.apk
 
       - name: Upload Signed World.apk
         uses: actions/upload-artifact@v4
